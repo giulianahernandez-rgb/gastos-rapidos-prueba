@@ -23,11 +23,12 @@ function categoryColor(index) {
   return slot[currentTheme()];
 }
 
-// No fixed currency/locale is assumed — just a "$" prefix with grouped
-// digits, since the app doesn't know which currency the user tracks in.
+// Formatted as Argentine pesos: "$" (same symbol ARS already uses, so no
+// "ARS"/"ARS$" prefix needed) plus es-AR grouping — "." for thousands,
+// "," for decimals, e.g. $1.234,50.
 function formatCurrency(amount) {
   const n = Number(amount) || 0;
-  const formatted = new Intl.NumberFormat('es', {
+  const formatted = new Intl.NumberFormat('es-AR', {
     minimumFractionDigits: n % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(n);
