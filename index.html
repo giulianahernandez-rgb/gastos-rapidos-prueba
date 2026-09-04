@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Gastos Rápidos</title>
+<meta name="description" content="Registra un gasto en menos de 20 segundos.">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gastos">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="stylesheet" href="css/styles.css">
+<script>
+  // Applied synchronously, before first paint, so a saved "light" choice
+  // never flashes the dark default first.
+  try {
+    if (localStorage.getItem('gastos_theme') === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  } catch (e) {}
+</script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ================= HOME ================= -->
+  <section class="screen home-screen active" id="screen-home">
+    <div class="home-header">
+      <span class="brand">💸 Gastos</span>
+      <button class="icon-btn" id="btn-open-dashboard" aria-label="Historial y resumen">📊</button>
+    </div>
+    <div class="home-hero">
+      <span class="today-total">Hoy</span>
+      <span class="today-amount" id="home-today-amount">$0</span>
+    </div>
+    <button class="big-cta" id="btn-new-expense">➕ Nuevo gasto</button>
+    <div class="home-footer">
+      <button class="ghost-btn" id="btn-open-dashboard-2">Ver historial</button>
+      <button class="ghost-btn" id="btn-open-settings">Ajustes</button>
+    </div>
+  </section>
+
+  <!-- ================= STEP 1: AMOUNT ================= -->
+  <section class="screen" id="screen-amount">
+    <div class="step-topbar">
+      <button class="icon-btn" id="btn-amount-cancel" aria-label="Cancelar">✕</button>
+      <div class="step-progress">
+        <span class="step-dot done"></span><span class="step-dot"></span><span class="step-dot"></span>
+        <span class="step-dot"></span><span class="step-dot"></span>
+      </div>
+      <span style="width:40px"></span>
+    </div>
+    <div class="amount-display"><span class="currency-sign">$</span><span id="amount-value">0</span></div>
+    <div class="keypad" id="keypad"></div>
+    <div class="amount-actions">
+      <button class="ghost-btn" id="btn-amount-cancel-2">Cancelar</button>
+      <button class="primary-btn" id="btn-amount-ok" disabled>OK</button>
+    </div>
+  </section>
+
+  <!-- ================= STEP 2: NOTE ================= -->
+  <section class="screen" id="screen-note">
+    <div class="step-topbar">
+      <button class="icon-btn" id="btn-note-back" aria-label="Atrás">←</button>
+      <div class="step-progress">
+        <span class="step-dot done"></span><span class="step-dot done"></span><span class="step-dot"></span>
+        <span class="step-dot"></span><span class="step-dot"></span>
+      </div>
+      <button class="icon-btn" id="btn-note-cancel" aria-label="Cancelar">✕</button>
+    </div>
+    <h1 class="step-title">Nota (opcional)</h1>
+    <p class="step-subtitle">Un detalle rápido, si quieres.</p>
+    <input class="note-input" id="note-input" type="text" placeholder="Ej. Café con Ana" maxlength="80" autocomplete="off">
+    <div class="step-flex-spacer"></div>
+    <div class="note-actions">
+      <button class="primary-btn" id="btn-note-continue">Continuar</button>
+      <button class="ghost-btn" id="btn-note-skip">Omitir</button>
+    </div>
+  </section>
+
+  <!-- ================= STEP 3: DATE ================= -->
+  <section class="screen" id="screen-date">
+    <div class="step-topbar">
+      <button class="icon-btn" id="btn-date-back" aria-label="Atrás">←</button>
+      <div class="step-progress">
+        <span class="step-dot done"></span><span class="step-dot done"></span><span class="step-dot done"></span>
+        <span class="step-dot"></span><span class="step-dot"></span>
+      </div>
+      <button class="icon-btn" id="btn-date-cancel" aria-label="Cancelar">✕</button>
+    </div>
+    <h1 class="step-title">Fecha</h1>
+    <p class="step-subtitle">Hoy ya está seleccionado.</p>
+    <div class="date-quick">
+      <button class="chip" id="chip-today" style="justify-content:center">Hoy</button>
+      <button class="chip" id="chip-yesterday" style="justify-content:center">Ayer</button>
+    </div>
+    <input class="date-native" id="date-input" type="date">
+  </section>
+
+  <!-- ================= STEP 4: CATEGORY ================= -->
+  <section class="screen" id="screen-category">
+    <div class="step-topbar">
+      <button class="icon-btn" id="btn-category-back" aria-label="Atrás">←</button>
+      <div class="step-progress">
+        <span class="step-dot done"></span><span class="step-dot done"></span><span class="step-dot done"></span>
+        <span class="step-dot done"></span><span class="step-dot"></span>
+      </div>
+      <button class="icon-btn" id="btn-category-cancel" aria-label="Cancelar">✕</button>
+    </div>
+    <h1 class="step-title">Categoría</h1>
+    <p class="step-subtitle">Toca una para continuar.</p>
+    <div class="choice-grid" id="category-grid"></div>
+  </section>
+
+  <!-- ================= STEP 5: PAYMENT METHOD ================= -->
+  <section class="screen" id="screen-payment">
+    <div class="step-topbar">
+      <button class="icon-btn" id="btn-payment-back" aria-label="Atrás">←</button>
+      <div class="step-progress">
+        <span class="step-dot done"></span><span class="step-dot done"></span><span class="step-dot done"></span>
+        <span class="step-dot done"></span><span class="step-dot done"></span>
+      </div>
+      <button class="icon-btn" id="btn-payment-cancel" aria-label="Cancelar">✕</button>
+    </div>
+    <h1 class="step-title">Método de pago</h1>
+    <p class="step-subtitle">Último paso.</p>
+    <div class="chip-list" id="payment-list"></div>
+  </section>
+
+  <!-- ================= CONFIRMATION ================= -->
+  <section class="screen confirm-screen" id="screen-confirm">
+    <div class="confirm-check">✅</div>
+    <div class="confirm-title">Gasto agregado</div>
+    <div class="confirm-summary" id="confirm-summary"></div>
+  </section>
+
+  <!-- ================= DASHBOARD / HISTORY ================= -->
+  <section class="screen dash-screen" id="screen-dashboard">
+    <div class="step-topbar">
+      <button class="icon-btn" id="btn-dashboard-close" aria-label="Cerrar">←</button>
+      <span style="font-weight:700;font-size:16px">Historial</span>
+      <button class="icon-btn" id="btn-dashboard-settings" aria-label="Ajustes">⚙️</button>
+    </div>
+
+    <div class="filter-row" id="range-filter-row">
+      <button class="filter-chip active" data-range="month">Este mes</button>
+      <button class="filter-chip" data-range="7d">Últimos 7 días</button>
+      <button class="filter-chip" data-range="30d">Últimos 30 días</button>
+      <button class="filter-chip" data-range="all">Todo</button>
+    </div>
+    <div class="filter-row" id="category-filter-row"></div>
+
+    <div class="dash-scroll">
+      <div class="stat-tile">
+        <div class="stat-label" id="stat-label">Total · este mes</div>
+        <div class="stat-value" id="stat-value">$0</div>
+      </div>
+
+      <div class="section-card">
+        <p class="section-title">Gasto por categoría</p>
+        <div id="category-chart"></div>
+      </div>
+
+      <div class="section-card">
+        <p class="section-title">Movimientos</p>
+        <div id="expense-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section class="screen" id="screen-settings">
+    <div class="step-topbar">
+      <button class="icon-btn" id="btn-settings-close" aria-label="Cerrar">←</button>
+      <span style="font-weight:700;font-size:16px">Ajustes</span>
+      <span style="width:40px"></span>
+    </div>
+    <div class="dash-scroll">
+      <div class="section-card">
+        <p class="section-title">Apariencia</p>
+        <div class="toggle-row">
+          <span>Modo claro</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-theme">
+            <span class="track"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <p class="section-title">Sincronizar con Notion (opcional)</p>
+        <p class="step-subtitle" style="margin-bottom:14px">Requiere el proxy incluido en /server porque la API de Notion no acepta llamadas directas desde el navegador. Ver README.</p>
+        <div class="toggle-row">
+          <span>Activar sincronización</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-notion">
+            <span class="track"></span>
+          </label>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label" for="notion-proxy-url">URL del proxy</label>
+          <input class="settings-input" id="notion-proxy-url" type="url" placeholder="http://localhost:8787">
+        </div>
+        <div class="settings-field" style="margin-bottom:6px">
+          <label class="settings-label" for="notion-database-id">ID de la base de datos de Notion</label>
+          <input class="settings-input" id="notion-database-id" type="text" placeholder="32 caracteres">
+        </div>
+        <button class="ghost-btn" id="btn-notion-test" style="width:100%">Probar conexión</button>
+        <p class="status-msg" id="notion-status"></p>
+      </div>
+
+      <div class="section-card">
+        <p class="section-title">Datos</p>
+        <button class="ghost-btn" id="btn-export-json" style="width:100%">Exportar gastos (JSON)</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ============ Bottom sheet: edit / delete an expense ============ -->
+<div class="sheet-backdrop" id="expense-sheet-backdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-btn" id="sheet-edit">✏️ Editar</button>
+    <button class="sheet-btn danger" id="sheet-delete">🗑️ Eliminar</button>
+    <button class="sheet-btn" id="sheet-cancel">Cancelar</button>
+  </div>
+</div>
+
+<!-- ============ Edit expense modal ============ -->
+<div class="sheet-backdrop" id="edit-modal-backdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="dash-scroll" style="max-height:70vh">
+      <div class="settings-field">
+        <label class="settings-label">Importe</label>
+        <input class="settings-input" id="edit-amount" type="number" step="0.01" min="0" inputmode="decimal">
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">Nota</label>
+        <input class="settings-input" id="edit-note" type="text" maxlength="80">
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">Fecha</label>
+        <input class="settings-input" id="edit-date" type="date">
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">Categoría</label>
+        <select class="settings-input" id="edit-category"></select>
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">Método de pago</label>
+        <select class="settings-input" id="edit-payment"></select>
+      </div>
+      <div class="amount-actions">
+        <button class="ghost-btn" id="btn-edit-cancel">Cancelar</button>
+        <button class="primary-btn" id="btn-edit-save">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Prompt: new custom category ============ -->
+<div class="prompt-backdrop" id="category-prompt-backdrop">
+  <div class="prompt-card">
+    <p class="prompt-title">Nueva categoría</p>
+    <input class="settings-input" id="category-prompt-input" type="text" maxlength="24" placeholder="Ej. Mascotas">
+    <div class="prompt-actions">
+      <button class="ghost-btn" id="category-prompt-cancel" style="flex:1">Cancelar</button>
+      <button class="primary-btn" id="category-prompt-save" style="flex:1">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/db.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/notion.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
