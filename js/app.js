@@ -514,7 +514,19 @@
     refreshHomeTotal();
 
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      // 'controllerchange' also fires on the very first-ever install (no
+      // controller -> a controller), which isn't an update — only treat it
+      // as one if this page was already controlled by a prior SW.
+      const hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.register('sw.js').catch(() => {});
+      if (hadController) {
+        let reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (reloading) return;
+          reloading = true;
+          location.reload();
+        });
+      }
     }
   }
 

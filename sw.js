@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gastos-rapidos-v1';
+const CACHE_NAME = 'gastos-rapidos-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -27,20 +27,19 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// App shell: cache-first (instant loads). Anything cross-origin (e.g. a
-// future Notion proxy) is left to the network untouched.
+// App shell: network-first. This is an actively-updated app, so a fresh
+// deploy must show up the moment the phone is online — the cache is only
+// the offline fallback, never the source of truth. Anything cross-origin
+// (e.g. a future Notion proxy) is left to the network untouched.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || event.request.method !== 'GET') return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return res;
-      }).catch(() => cached);
-    })
+    fetch(event.request).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      return res;
+    }).catch(() => caches.match(event.request))
   );
 });
