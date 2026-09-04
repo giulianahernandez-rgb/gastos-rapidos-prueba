@@ -70,10 +70,66 @@ function renderCategoryBarChart(container, data) {
   });
 }
 
+// Status palette (fixed — never themed, never reused for a series).
+const STATUS = { good: '#0ca30c', warning: '#fab219', critical: '#d03b3b' };
+function statusForRatio(ratio) {
+  if (ratio > 1) return 'critical';
+  if (ratio >= 0.8) return 'warning';
+  return 'good';
+}
+
+// data: [{ id, label, emoji, spent, budget }]. A meter, not a ranked bar
+// chart — the job here is "state vs. a threshold," so it earns the status
+// palette instead of the categorical one.
+function renderBudgetMeters(container, data) {
+  container.innerHTML = '';
+  if (!data.length) {
+    const empty = document.createElement('p');
+    empty.className = 'chart-empty';
+    empty.textContent = 'Todavía no definiste presupuestos por categoría.';
+    container.appendChild(empty);
+    return;
+  }
+  data.forEach((row) => {
+    const ratio = row.budget > 0 ? row.spent / row.budget : 0;
+    const status = statusForRatio(ratio);
+    const pct = Math.min(ratio, 1) * 100;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'cat-bar-row';
+
+    const head = document.createElement('div');
+    head.className = 'cat-bar-head';
+    head.innerHTML = `<span class="cat-bar-label"><span aria-hidden="true">${row.emoji}</span> ${escapeHtml(row.label)}</span>` +
+      `<span class="cat-bar-value">${formatCurrency(row.spent)} / ${formatCurrency(row.budget)}</span>`;
+    wrap.appendChild(head);
+
+    const track = document.createElement('div');
+    track.className = 'cat-bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'cat-bar-fill';
+    fill.style.width = Math.max(pct, 3) + '%';
+    fill.style.background = STATUS[status];
+    track.appendChild(fill);
+    wrap.appendChild(track);
+
+    if (status !== 'good') {
+      const note = document.createElement('div');
+      note.className = 'meter-note meter-note-' + status;
+      note.textContent = status === 'critical'
+        ? `🚨 Te pasaste por ${formatCurrency(row.spent - row.budget)}`
+        : '⚠️ Cerca del límite';
+      wrap.appendChild(note);
+    }
+
+    container.appendChild(wrap);
+  });
+}
+
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
 }
 
-window.Charts = { categoryColor, formatCurrency, renderCategoryBarChart, escapeHtml };
+window.Charts = { categoryColor, formatCurrency, renderCategoryBarChart, renderBudgetMeters, escapeHtml };

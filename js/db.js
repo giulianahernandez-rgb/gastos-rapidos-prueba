@@ -1,10 +1,12 @@
 // IndexedDB wrapper — persistent storage for expenses, categories and settings.
 // Kept dependency-free so the whole app runs from static files (PWA-friendly).
 const DB_NAME = 'gastos_rapidos_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_EXPENSES = 'expenses';
 const STORE_CATEGORIES = 'categories';
 const STORE_SETTINGS = 'settings';
+const STORE_GOALS = 'goals';
+const STORE_RECURRING = 'recurring';
 
 const DEFAULT_CATEGORIES = [
   { id: 'comida', label: 'Comida', emoji: '🍔', builtin: true, order: 0 },
@@ -45,6 +47,12 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
         db.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_GOALS)) {
+        db.createObjectStore(STORE_GOALS, { keyPath: 'id', autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains(STORE_RECURRING)) {
+        db.createObjectStore(STORE_RECURRING, { keyPath: 'id', autoIncrement: true });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -122,6 +130,77 @@ const DB = {
     const cat = { id, label, emoji: '🏷️', builtin: false, order: nextOrder };
     await wrapReq(store.add(cat));
     return cat;
+  },
+
+  async setCategoryBudget(categoryId, budget) {
+    const store = await tx(STORE_CATEGORIES, 'readwrite');
+    let cat = await wrapReq(store.get(categoryId));
+    if (!cat) {
+      // built-in categories only get written to the store the first time
+      // they need a field of their own (budget) — until then getCategories()
+      // serves them straight from DEFAULT_CATEGORIES.
+      cat = DEFAULT_CATEGORIES.find((c) => c.id === categoryId);
+      if (!cat) throw new Error('Categoría no encontrada');
+    }
+    cat = { ...cat, budget: budget > 0 ? budget : undefined };
+    await wrapReq(store.put(cat));
+    return cat;
+  },
+
+  /* ---------- Goals (savings) ---------- */
+  async getGoals() {
+    const store = await tx(STORE_GOALS, 'readonly');
+    const all = await wrapReq(store.getAll());
+    return all.sort((a, b) => b.createdAt - a.createdAt);
+  },
+
+  async addGoal(label, target) {
+    const store = await tx(STORE_GOALS, 'readwrite');
+    const goal = { label, target, current: 0, createdAt: Date.now() };
+    const id = await wrapReq(store.add(goal));
+    return { ...goal, id };
+  },
+
+  async addGoalContribution(id, amount) {
+    const store = await tx(STORE_GOALS, 'readwrite');
+    const goal = await wrapReq(store.get(id));
+    if (!goal) throw new Error('Meta no encontrada');
+    goal.current = Math.max(0, (goal.current || 0) + amount);
+    await wrapReq(store.put(goal));
+    return goal;
+  },
+
+  async deleteGoal(id) {
+    const store = await tx(STORE_GOALS, 'readwrite');
+    await wrapReq(store.delete(id));
+  },
+
+  /* ---------- Recurring (fixed) expenses ---------- */
+  async getRecurring() {
+    const store = await tx(STORE_RECURRING, 'readonly');
+    const all = await wrapReq(store.getAll());
+    return all.sort((a, b) => a.createdAt - b.createdAt);
+  },
+
+  async addRecurring(recurring) {
+    const store = await tx(STORE_RECURRING, 'readwrite');
+    const record = { ...recurring, loggedMonths: [], createdAt: Date.now() };
+    const id = await wrapReq(store.add(record));
+    return { ...record, id };
+  },
+
+  async deleteRecurring(id) {
+    const store = await tx(STORE_RECURRING, 'readwrite');
+    await wrapReq(store.delete(id));
+  },
+
+  async markRecurringLogged(id, monthKey) {
+    const store = await tx(STORE_RECURRING, 'readwrite');
+    const rec = await wrapReq(store.get(id));
+    if (!rec) return;
+    rec.loggedMonths = [...new Set([...(rec.loggedMonths || []), monthKey])];
+    await wrapReq(store.put(rec));
+    return rec;
   },
 
   async getSetting(key, fallback) {

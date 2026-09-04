@@ -25,6 +25,13 @@
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
     $(id).classList.add('active');
   }
+  function monthKey(offsetDays) {
+    return (offsetDays ? isoFromToday(offsetDays) : todayISO()).slice(0, 7);
+  }
+  function firstOfMonthISO() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  }
 
   // Consecutive days with at least one expense, counting back from today.
   // Stays "alive" through today even before today's first entry, so it
@@ -322,6 +329,23 @@
       .sort((a, b) => b.amount - a.amount);
     Charts.renderCategoryBarChart($('category-chart'), chartData);
 
+    // budget meters — always against the current calendar month, independent
+    // of the range filter above (a budget is inherently monthly)
+    const monthStart = firstOfMonthISO();
+    const monthSpendByCat = new Map();
+    all.filter((e) => e.date >= monthStart).forEach((e) => {
+      const key = e.categoryId || e.category;
+      monthSpendByCat.set(key, (monthSpendByCat.get(key) || 0) + e.amount);
+    });
+    const budgetData = cats
+      .filter((c) => c.budget > 0)
+      .map((c) => ({ id: c.id, label: c.label, emoji: c.emoji, spent: monthSpendByCat.get(c.id) || 0, budget: c.budget }));
+    $('budget-section').hidden = budgetData.length === 0;
+    if (budgetData.length) Charts.renderBudgetMeters($('budget-meters'), budgetData);
+
+    // weekly insight — this week (last 7 days) vs. the 7 days before that
+    renderWeeklyInsight(all);
+
     // expense list
     const list = $('expense-list');
     list.innerHTML = '';
@@ -343,6 +367,37 @@
         list.appendChild(row);
       });
     }
+  }
+
+  function renderWeeklyInsight(all) {
+    const thisWeekStart = isoFromToday(-6);
+    const lastWeekStart = isoFromToday(-13);
+    const thisWeek = all.filter((e) => e.date >= thisWeekStart).reduce((s, e) => s + e.amount, 0);
+    const lastWeek = all.filter((e) => e.date >= lastWeekStart && e.date < thisWeekStart).reduce((s, e) => s + e.amount, 0);
+
+    const card = $('insight-card');
+    if (thisWeek === 0 && lastWeek === 0) { card.hidden = true; return; }
+
+    let icon = '➡️', text;
+    if (lastWeek === 0) {
+      icon = '📊';
+      text = `Llevás <b>${Charts.formatCurrency(thisWeek)}</b> gastados esta semana.`;
+    } else {
+      const pct = Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+      if (pct > 5) {
+        icon = '📈';
+        text = `Gastaste <b>${pct}% más</b> esta semana que la semana pasada.`;
+      } else if (pct < -5) {
+        icon = '📉';
+        text = `Gastaste <b>${Math.abs(pct)}% menos</b> esta semana que la semana pasada 🎉`;
+      } else {
+        icon = '➡️';
+        text = `Gastaste más o menos <b>igual</b> que la semana pasada.`;
+      }
+    }
+    $('insight-icon').textContent = icon;
+    $('insight-text').innerHTML = text;
+    card.hidden = false;
   }
 
   /* ---------- edit / delete sheet ---------- */
@@ -414,6 +469,9 @@
     $('notion-status').textContent = '';
     $('notion-status').className = 'status-msg';
 
+    await renderBudgetSettings();
+    await renderRecurringSettings();
+
     showScreen('screen-settings');
   }
   function applyTheme(light) {
@@ -421,6 +479,196 @@
     try { localStorage.setItem('gastos_theme', light ? 'light' : 'dark'); } catch (e) {}
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', light ? '#f9f9f7' : '#0d0d0d');
+  }
+
+  /* ---------- Budgets (in Settings) ---------- */
+  async function renderBudgetSettings() {
+    const cats = await DB.getCategories();
+    const list = $('budget-settings-list');
+    list.innerHTML = '';
+    cats.forEach((cat) => {
+      const row = document.createElement('div');
+      row.className = 'settings-list-row';
+      row.innerHTML = `
+        <span class="settings-list-label"><span aria-hidden="true">${cat.emoji}</span> ${Charts.escapeHtml(cat.label)}</span>
+        <input class="settings-list-input" type="number" min="0" step="1" inputmode="decimal" placeholder="Sin límite" value="${cat.budget || ''}">`;
+      const input = row.querySelector('input');
+      input.addEventListener('change', async () => {
+        await DB.setCategoryBudget(cat.id, parseFloat(input.value) || 0);
+      });
+      list.appendChild(row);
+    });
+  }
+
+  /* ---------- Recurring / fixed expenses (in Settings) ---------- */
+  async function renderRecurringSettings() {
+    const [recurring, cats] = await Promise.all([DB.getRecurring(), DB.getCategories()]);
+    const catById = Object.fromEntries(cats.map((c) => [c.id, c]));
+    const list = $('recurring-list');
+    list.innerHTML = '';
+    if (!recurring.length) {
+      list.innerHTML = '<p class="empty-state" style="padding:12px 0">Todavía no agregaste gastos fijos.</p>';
+      return;
+    }
+    recurring.forEach((r) => {
+      const cat = catById[r.categoryId] || { emoji: '🏷️' };
+      const item = document.createElement('div');
+      item.className = 'recurring-item';
+      item.innerHTML = `
+        <div class="expense-emoji">${cat.emoji}</div>
+        <div class="recurring-item-info">
+          <div class="recurring-item-title">${Charts.escapeHtml(r.label)}</div>
+          <div class="recurring-item-meta">${Charts.formatCurrency(r.amount)}/mes · ${Charts.escapeHtml(r.paymentLabel || '')}</div>
+        </div>
+        <button class="icon-delete-btn" aria-label="Eliminar">🗑️</button>`;
+      item.querySelector('.icon-delete-btn').addEventListener('click', async () => {
+        if (!confirm(`¿Eliminar "${r.label}" de tus gastos fijos?`)) return;
+        await DB.deleteRecurring(r.id);
+        renderRecurringSettings();
+      });
+      list.appendChild(item);
+    });
+  }
+
+  function openRecurringModal() {
+    DB.getCategories().then((cats) => {
+      $('recurring-category').innerHTML = cats.map((c) => `<option value="${c.id}">${c.emoji} ${Charts.escapeHtml(c.label)}</option>`).join('');
+    });
+    $('recurring-payment').innerHTML = DB.PAYMENT_METHODS.map((p) => `<option value="${p.id}">${p.emoji} ${p.label}</option>`).join('');
+    $('recurring-label').value = '';
+    $('recurring-amount').value = '';
+    $('recurring-modal-backdrop').classList.add('active');
+  }
+  function closeRecurringModal() {
+    $('recurring-modal-backdrop').classList.remove('active');
+  }
+  async function saveRecurringModal() {
+    const label = $('recurring-label').value.trim();
+    const amount = parseFloat($('recurring-amount').value) || 0;
+    if (!label || amount <= 0) return;
+    const cats = await DB.getCategories();
+    const cat = cats.find((c) => c.id === $('recurring-category').value);
+    const pay = DB.PAYMENT_METHODS.find((p) => p.id === $('recurring-payment').value);
+    await DB.addRecurring({
+      label, amount,
+      categoryId: cat ? cat.id : null,
+      categoryLabel: cat ? cat.label : '',
+      paymentMethod: pay ? pay.id : null,
+      paymentLabel: pay ? pay.label : '',
+    });
+    closeRecurringModal();
+    renderRecurringSettings();
+    refreshRecurringBanner();
+  }
+
+  /* ---------- Recurring reminder banner (home) ---------- */
+  async function getPendingRecurring() {
+    const recurring = await DB.getRecurring();
+    const key = monthKey();
+    return recurring.filter((r) => !(r.loggedMonths || []).includes(key));
+  }
+  async function refreshRecurringBanner() {
+    const pending = await getPendingRecurring();
+    const banner = $('recurring-banner');
+    if (!pending.length) { banner.hidden = true; return; }
+    const names = pending.slice(0, 3).map((r) => r.label).join(', ');
+    const extra = pending.length > 3 ? ` +${pending.length - 3}` : '';
+    $('recurring-banner-text').innerHTML =
+      `<b>${pending.length} gasto${pending.length > 1 ? 's' : ''} fijo${pending.length > 1 ? 's' : ''} pendiente${pending.length > 1 ? 's' : ''}</b> este mes · ${Charts.escapeHtml(names)}${extra}`;
+    banner.hidden = false;
+  }
+  async function logPendingRecurring() {
+    const pending = await getPendingRecurring();
+    if (!pending.length) return;
+    const summary = pending.map((r) => `• ${r.label} (${Charts.formatCurrency(r.amount)})`).join('\n');
+    if (!confirm(`¿Agregar estos gastos fijos de este mes?\n\n${summary}`)) return;
+    const key = monthKey();
+    for (const r of pending) {
+      await DB.addExpense({
+        amount: r.amount, note: r.label, date: todayISO(),
+        category: r.categoryLabel, categoryId: r.categoryId, paymentMethod: r.paymentLabel,
+      });
+      await DB.markRecurringLogged(r.id, key);
+    }
+    refreshHomeTotal();
+    refreshRecurringBanner();
+  }
+
+  /* ==================================================================
+     GOALS (savings)
+     ================================================================== */
+  let activeGoalId = null;
+
+  async function openGoalsScreen() {
+    showScreen('screen-goals');
+    await renderGoals();
+  }
+  async function renderGoals() {
+    const goals = await DB.getGoals();
+    const list = $('goals-list');
+    list.innerHTML = '';
+    if (!goals.length) {
+      list.innerHTML = '<p class="empty-state">Todavía no tenés metas de ahorro. Tocá ➕ para crear una.</p>';
+      return;
+    }
+    goals.forEach((g) => {
+      const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
+      const card = document.createElement('div');
+      card.className = 'goal-card';
+      card.innerHTML = `
+        <div class="goal-head">
+          <span class="goal-label">${Charts.escapeHtml(g.label)}</span>
+          <span class="goal-pct">${Math.round(pct)}%</span>
+        </div>
+        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${Math.max(pct, 3)}%; background: var(--accent)"></div></div>
+        <div class="goal-amounts"><b>${Charts.formatCurrency(g.current)}</b> de ${Charts.formatCurrency(g.target)}</div>`;
+      card.addEventListener('click', () => openContributionPrompt(g));
+      list.appendChild(card);
+    });
+  }
+
+  function openGoalPrompt() {
+    $('goal-prompt-label').value = '';
+    $('goal-prompt-target').value = '';
+    $('goal-prompt-backdrop').classList.add('active');
+    setTimeout(() => $('goal-prompt-label').focus(), 50);
+  }
+  function closeGoalPrompt() {
+    $('goal-prompt-backdrop').classList.remove('active');
+  }
+  async function saveGoalPrompt() {
+    const label = $('goal-prompt-label').value.trim();
+    const target = parseFloat($('goal-prompt-target').value) || 0;
+    if (!label || target <= 0) return;
+    await DB.addGoal(label, target);
+    closeGoalPrompt();
+    renderGoals();
+  }
+
+  function openContributionPrompt(goal) {
+    activeGoalId = goal.id;
+    $('contribution-prompt-title').textContent = `Agregar a: ${goal.label}`;
+    $('contribution-prompt-input').value = '';
+    $('contribution-prompt-backdrop').classList.add('active');
+    setTimeout(() => $('contribution-prompt-input').focus(), 50);
+  }
+  function closeContributionPrompt() {
+    $('contribution-prompt-backdrop').classList.remove('active');
+    activeGoalId = null;
+  }
+  async function saveContribution() {
+    const amount = parseFloat($('contribution-prompt-input').value) || 0;
+    if (!amount || !activeGoalId) return;
+    await DB.addGoalContribution(activeGoalId, amount);
+    closeContributionPrompt();
+    renderGoals();
+  }
+  async function deleteActiveGoal() {
+    if (!activeGoalId) return;
+    if (!confirm('¿Eliminar esta meta?')) return;
+    await DB.deleteGoal(activeGoalId);
+    closeContributionPrompt();
+    renderGoals();
   }
 
   /* ==================================================================
@@ -435,6 +683,8 @@
     $('btn-open-dashboard').addEventListener('click', openDashboard);
     $('btn-open-dashboard-2').addEventListener('click', openDashboard);
     $('btn-open-settings').addEventListener('click', openSettings);
+    $('btn-open-goals').addEventListener('click', openGoalsScreen);
+    $('recurring-banner').addEventListener('click', logPendingRecurring);
 
     // Amount step
     $('btn-amount-ok').addEventListener('click', () => {
@@ -511,7 +761,26 @@
     });
     $('btn-export-json').addEventListener('click', exportJSON);
 
+    // Recurring (fixed) expenses
+    $('btn-add-recurring').addEventListener('click', openRecurringModal);
+    $('btn-recurring-cancel').addEventListener('click', closeRecurringModal);
+    $('btn-recurring-save').addEventListener('click', saveRecurringModal);
+    $('recurring-modal-backdrop').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeRecurringModal(); });
+
+    // Goals
+    $('btn-goals-close').addEventListener('click', () => showScreen('screen-home'));
+    $('btn-add-goal').addEventListener('click', openGoalPrompt);
+    $('goal-prompt-cancel').addEventListener('click', closeGoalPrompt);
+    $('goal-prompt-save').addEventListener('click', saveGoalPrompt);
+    $('goal-prompt-backdrop').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeGoalPrompt(); });
+    $('goal-prompt-target').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveGoalPrompt(); });
+    $('contribution-save').addEventListener('click', saveContribution);
+    $('contribution-delete').addEventListener('click', deleteActiveGoal);
+    $('contribution-prompt-backdrop').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeContributionPrompt(); });
+    $('contribution-prompt-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveContribution(); });
+
     refreshHomeTotal();
+    refreshRecurringBanner();
 
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       // 'controllerchange' also fires on the very first-ever install (no
