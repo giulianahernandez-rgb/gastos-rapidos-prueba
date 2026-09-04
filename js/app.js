@@ -26,6 +26,18 @@
     $(id).classList.add('active');
   }
 
+  // Consecutive days with at least one expense, counting back from today.
+  // Stays "alive" through today even before today's first entry, so it
+  // doesn't drop to zero the moment the clock rolls past midnight.
+  function computeStreak(expenses) {
+    const days = new Set(expenses.map((e) => e.date));
+    let cursor = days.has(todayISO()) ? 0 : days.has(isoFromToday(-1)) ? -1 : null;
+    if (cursor === null) return 0;
+    let streak = 0;
+    while (days.has(isoFromToday(cursor))) { streak++; cursor--; }
+    return streak;
+  }
+
   /* ---------- category color index cache (stable across renders) ---------- */
   let categoryOrder = []; // list of category ids in stored order — index = palette slot
   function colorIndexFor(catId) {
@@ -76,6 +88,10 @@
     if (decimals && decimals.length > 2) return;
     draft.amountStr = s;
     renderAmount();
+    const display = $('amount-display');
+    display.classList.remove('pop');
+    void display.offsetWidth; // restart the animation on every keypress
+    display.classList.add('pop');
   }
   function renderAmount() {
     $('amount-value').textContent = draft.amountStr;
@@ -208,9 +224,14 @@
 
     $('confirm-summary').textContent =
       `${Charts.formatCurrency(amount)} · ${draft.categoryEmoji} ${draft.categoryLabel} · ${formatDateLabel(draft.date)}`;
+
+    const all = await DB.getAllExpenses();
+    const streak = computeStreak(all);
+    $('confirm-streak').textContent = streak >= 2 ? `🔥 ${streak} días seguidos registrando` : '';
+
     showScreen('screen-confirm');
     refreshHomeTotal();
-    setTimeout(() => showScreen('screen-home'), 1300);
+    setTimeout(() => showScreen('screen-home'), 1500);
   }
 
   async function refreshHomeTotal() {
@@ -218,6 +239,15 @@
     const today = todayISO();
     const sum = all.filter((e) => e.date === today).reduce((s, e) => s + e.amount, 0);
     $('home-today-amount').textContent = Charts.formatCurrency(sum);
+
+    const streak = computeStreak(all);
+    const badge = $('home-streak');
+    if (streak >= 2) {
+      badge.textContent = `🔥 ${streak} días seguidos`;
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
   }
 
   /* ==================================================================

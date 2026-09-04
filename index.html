@@ -35,6 +35,7 @@
     <div class="home-hero">
       <span class="today-total">Hoy</span>
       <span class="today-amount" id="home-today-amount">$0</span>
+      <span class="streak-badge" id="home-streak" hidden></span>
     </div>
     <button class="big-cta" id="btn-new-expense">➕ Nuevo gasto</button>
     <div class="home-footer">
@@ -53,7 +54,7 @@
       </div>
       <span style="width:40px"></span>
     </div>
-    <div class="amount-display"><span class="currency-sign">$</span><span id="amount-value">0</span></div>
+    <div class="amount-display" id="amount-display"><span class="currency-sign">$</span><span id="amount-value">0</span></div>
     <div class="keypad" id="keypad"></div>
     <div class="amount-actions">
       <button class="ghost-btn" id="btn-amount-cancel-2">Cancelar</button>
@@ -132,9 +133,10 @@
 
   <!-- ================= CONFIRMATION ================= -->
   <section class="screen confirm-screen" id="screen-confirm">
-    <div class="confirm-check">✅</div>
+    <div class="confirm-check">✓</div>
     <div class="confirm-title">Gasto agregado</div>
     <div class="confirm-summary" id="confirm-summary"></div>
+    <div class="confirm-streak" id="confirm-streak"></div>
   </section>
 
   <!-- ================= DASHBOARD / HISTORY ================= -->
